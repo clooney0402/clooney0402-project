@@ -1,0 +1,1435 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prototype Numbering Agent</title>
+<style>
+:root{
+  --bg:#f4f5f7; --panel:#ffffff; --line:#e3e6ea; --line-2:#eef0f3;
+  --ink:#161a1d; --ink-2:#5a6472; --ink-3:#8b95a3;
+  --spec:#2563eb; --spec-soft:#e8efff;
+  --review:#e8590c; --review-soft:#fff0e6;
+  --ok:#0f7b4f; --warn:#b7791f;
+  --radius:8px;
+  --topbar-h:52px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font:13px/1.5 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Malgun Gothic",sans-serif;
+  overflow:hidden;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+.hide{display:none !important}
+
+/* ---------- topbar ---------- */
+.topbar{
+  height:var(--topbar-h); display:flex; align-items:center; gap:10px;
+  padding:0 12px; background:var(--panel); border-bottom:1px solid var(--line);
+  position:relative; z-index:20;
+}
+.brand{font-weight:700; letter-spacing:-.2px; white-space:nowrap; padding-right:4px}
+.brand span{color:var(--ink-3); font-weight:500; font-size:11px; margin-left:4px}
+.src{display:flex; align-items:center; gap:6px; flex:1; min-width:180px; max-width:520px}
+.src input[type=text]{
+  flex:1; min-width:0; height:30px; padding:0 10px; border:1px solid var(--line);
+  border-radius:var(--radius); background:#fff; outline:none;
+}
+.src input[type=text]:focus{border-color:var(--spec); box-shadow:0 0 0 3px var(--spec-soft)}
+.btn{
+  height:30px; padding:0 10px; border:1px solid var(--line); background:#fff;
+  border-radius:var(--radius); white-space:nowrap;
+}
+.btn:hover{background:#f7f8fa}
+.btn.primary{background:var(--ink); color:#fff; border-color:var(--ink)}
+.btn.primary:hover{background:#000}
+.btn.ghost{border-color:transparent; background:transparent; color:var(--ink-2)}
+.btn.ghost:hover{background:var(--line-2); color:var(--ink)}
+.btn.danger{color:#c0392b; border-color:#f0d5d1; background:#fff}
+.btn.danger:hover{background:#fdf1ef}
+.seg{display:flex; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; background:#fff}
+.seg button{height:30px; padding:0 12px; border:0; background:transparent; color:var(--ink-2)}
+.seg button.on{background:var(--ink); color:#fff}
+.seg.type button.on[data-type=spec]{background:var(--spec)}
+.seg.type button.on[data-type=review]{background:var(--review)}
+.spacer{flex:1}
+.tools{display:flex; align-items:center; gap:6px}
+.tools select{height:30px; border:1px solid var(--line); border-radius:var(--radius); background:#fff; padding:0 6px}
+.pill{
+  font-size:11px; color:var(--ink-3); padding:3px 8px; border-radius:99px;
+  background:var(--line-2); white-space:nowrap;
+}
+
+/* ---------- layout ---------- */
+.main{display:flex; height:calc(100% - var(--topbar-h))}
+.stage{
+  flex:1; min-width:0; position:relative; overflow:auto;
+  background:
+    linear-gradient(45deg,#eceef1 25%,transparent 25%,transparent 75%,#eceef1 75%) 0 0/16px 16px,
+    linear-gradient(45deg,#eceef1 25%,transparent 25%,transparent 75%,#eceef1 75%) 8px 8px/16px 16px,
+    var(--bg);
+  display:flex; justify-content:center; padding:14px;
+}
+.frame-wrap{
+  position:relative; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.08),0 8px 24px rgba(0,0,0,.06);
+  border-radius:6px; transform-origin:top center; align-self:flex-start;
+}
+#frame{display:block; border:0; width:100%; height:100%; border-radius:6px; background:#fff}
+.stage.pinning #frame{cursor:crosshair}
+#fallbackLayer{position:absolute; inset:0; overflow:hidden; border-radius:6px; pointer-events:none}
+#fallbackLayer.on{pointer-events:auto}
+.stage.pinning #fallbackLayer.on{cursor:crosshair}
+
+.empty{
+  position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
+  justify-content:center; gap:14px; color:var(--ink-2); text-align:center; padding:24px;
+}
+.empty h2{margin:0; font-size:16px; color:var(--ink)}
+.empty p{margin:0; max-width:440px; line-height:1.7}
+.empty .samples{display:flex; flex-wrap:wrap; gap:6px; justify-content:center; max-width:520px}
+.empty .samples button{
+  border:1px solid var(--line); background:#fff; border-radius:99px; padding:5px 11px; font-size:12px;
+}
+.empty .samples button:hover{border-color:var(--spec); color:var(--spec)}
+
+.banner{
+  position:absolute; left:50%; transform:translateX(-50%); top:10px; z-index:30;
+  background:#fff8e6; border:1px solid #f0dca8; color:#7a5b12; padding:7px 12px;
+  border-radius:var(--radius); font-size:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); max-width:80%;
+}
+
+/* ---------- side panel ---------- */
+.side{
+  width:380px; flex:none; background:var(--panel); border-left:1px solid var(--line);
+  display:flex; flex-direction:column;
+}
+.side-head{padding:10px 12px; border-bottom:1px solid var(--line); display:flex; gap:6px; align-items:center}
+.filters{display:flex; gap:4px}
+.filters button{
+  border:1px solid var(--line); background:#fff; border-radius:99px; padding:4px 10px; font-size:12px; color:var(--ink-2);
+}
+.filters button.on{background:var(--ink); border-color:var(--ink); color:#fff}
+.list{flex:1; overflow:auto; padding:6px}
+.list:empty::after{
+  content:"핀이 없습니다. 상단 [핀 찍기]를 켜고 프로토타입 위를 클릭하세요.";
+  display:block; padding:24px 16px; color:var(--ink-3); text-align:center; line-height:1.7;
+}
+.row{
+  display:flex; gap:9px; padding:8px 9px; border-radius:var(--radius); cursor:pointer;
+  border:1px solid transparent; align-items:flex-start;
+}
+.row:hover{background:#f7f8fa}
+.row.on{background:var(--spec-soft); border-color:#c9dcff}
+.row.on.review{background:var(--review-soft); border-color:#ffd6bd}
+.row .no{
+  flex:none; width:22px; height:22px; border-radius:50%; color:#fff; font-size:11px; font-weight:700;
+  display:flex; align-items:center; justify-content:center; background:var(--spec); margin-top:1px;
+}
+.row.review .no{background:var(--review); border-radius:6px; width:auto; min-width:22px; padding:0 5px}
+.row .body{min-width:0; flex:1}
+.row .t{font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.row .t.dim{font-weight:400; color:var(--ink-3)}
+.row .m{font-size:11px; color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:1px}
+.row .tag{font-size:10px; padding:1px 5px; border-radius:4px; background:var(--line-2); color:var(--ink-2); margin-left:4px}
+.row .tag.p0{background:#fdecea; color:#c0392b}
+.row .tag.p1{background:#fff4e0; color:#a35b06}
+.row .tag.done{background:#e6f4ec; color:var(--ok)}
+.pagegroup{
+  font-size:11px; color:var(--ink-3); padding:10px 9px 4px; font-weight:600;
+  display:flex; align-items:center; gap:6px;
+}
+.pagegroup::after{content:""; flex:1; height:1px; background:var(--line-2)}
+
+.detail{border-top:1px solid var(--line); background:#fbfcfd; max-height:56%; overflow:auto; padding:12px}
+.detail.empty-state{display:flex; align-items:center; justify-content:center; color:var(--ink-3); font-size:12px; padding:18px; max-height:none}
+.detail h3{margin:0 0 10px; font-size:13px; display:flex; align-items:center; gap:8px}
+.detail h3 .no{
+  width:22px;height:22px;border-radius:50%;background:var(--spec);color:#fff;font-size:11px;
+  display:flex;align-items:center;justify-content:center;
+}
+.detail h3.review .no{background:var(--review); border-radius:6px; width:auto; min-width:22px; padding:0 5px}
+.field{margin-bottom:9px}
+.field label{display:block; font-size:11px; color:var(--ink-2); margin-bottom:3px; font-weight:600}
+.field input,.field textarea,.field select{
+  width:100%; border:1px solid var(--line); border-radius:6px; padding:6px 8px; background:#fff; outline:none; resize:vertical;
+}
+.field input:focus,.field textarea:focus,.field select:focus{border-color:var(--spec); box-shadow:0 0 0 3px var(--spec-soft)}
+.field textarea{min-height:52px; line-height:1.6}
+.field-2{display:flex; gap:8px}
+.field-2 .field{flex:1}
+.meta{
+  font-size:11px; color:var(--ink-3); background:#fff; border:1px solid var(--line);
+  border-radius:6px; padding:7px 8px; margin-bottom:9px; word-break:break-all; line-height:1.6;
+}
+.meta b{color:var(--ink-2); font-weight:600}
+.detail-actions{display:flex; gap:6px; margin-top:10px}
+
+/* ---------- fallback (cross-origin) pins ---------- */
+#fallbackLayer .fpin{
+  position:absolute; transform:translate(-50%,-50%); width:24px; height:24px; border-radius:50%;
+  background:var(--spec); color:#fff; font-size:11px; font-weight:700; border:2px solid #fff;
+  display:flex; align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,.35);
+}
+#fallbackLayer .fpin.review{background:var(--review); border-radius:6px; width:auto; min-width:24px; padding:0 6px}
+#fallbackLayer .fpin.on{outline:3px solid rgba(37,99,235,.35)}
+
+/* ---------- dialog ---------- */
+dialog{
+  border:0; border-radius:12px; padding:0; width:min(860px,92vw); max-height:88vh;
+  box-shadow:0 10px 40px rgba(0,0,0,.25);
+}
+dialog::backdrop{background:rgba(10,14,20,.45)}
+.dlg-head{display:flex; align-items:center; gap:8px; padding:12px 14px; border-bottom:1px solid var(--line)}
+.dlg-head strong{flex:1}
+.dlg-tabs{display:flex; gap:4px; padding:10px 14px 0; flex-wrap:wrap}
+.dlg-tabs button{
+  border:1px solid var(--line); background:#fff; border-radius:99px; padding:5px 12px; font-size:12px; color:var(--ink-2);
+}
+.dlg-tabs button.on{background:var(--ink); border-color:var(--ink); color:#fff}
+.dlg-body{padding:10px 14px 14px}
+.dlg-body textarea{
+  width:100%; height:44vh; border:1px solid var(--line); border-radius:8px; padding:10px;
+  font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; background:#fbfcfd; outline:none;
+}
+.dlg-foot{display:flex; gap:8px; align-items:center; padding:0 14px 14px}
+.dlg-foot .hint{flex:1; font-size:11px; color:var(--ink-3)}
+.toast{
+  position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff;
+  padding:9px 16px; border-radius:99px; font-size:12px; z-index:100; opacity:0; pointer-events:none;
+  transition:opacity .18s, transform .18s;
+}
+.toast.on{opacity:1; transform:translateX(-50%) translateY(-4px)}
+kbd{
+  background:#fff; border:1px solid var(--line); border-bottom-width:2px; border-radius:4px;
+  padding:0 4px; font-size:10px; font-family:inherit; color:var(--ink-2);
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">🔢 넘버링<span>v1</span></div>
+  <div class="src">
+    <input type="text" id="urlInput" placeholder="프로토타입 파일명 또는 URL (예: SE-product-management.html)" spellcheck="false">
+    <button class="btn" id="loadBtn">불러오기</button>
+    <button class="btn" id="fileBtn" title="로컬 HTML/이미지 열기">파일</button>
+    <input type="file" id="fileInput" accept=".html,.htm,image/*" hidden>
+  </div>
+  <div class="seg" id="modeSeg">
+    <button data-mode="browse" class="on">탐색</button>
+    <button data-mode="pin">핀 찍기</button>
+  </div>
+  <div class="seg type" id="typeSeg">
+    <button data-type="spec" class="on">디스크립션</button>
+    <button data-type="review">리뷰</button>
+  </div>
+  <div class="spacer"></div>
+  <div class="tools">
+    <span class="pill" id="saveState">—</span>
+    <select id="device" title="화면 폭">
+      <option value="full">전체 폭</option>
+      <option value="390">모바일 390</option>
+      <option value="430">모바일 430</option>
+      <option value="768">태블릿 768</option>
+      <option value="1280">데스크톱 1280</option>
+      <option value="1440">데스크톱 1440</option>
+    </select>
+    <select id="zoom" title="확대/축소">
+      <option value="1">100%</option>
+      <option value="0.9">90%</option>
+      <option value="0.75">75%</option>
+      <option value="0.6">60%</option>
+      <option value="0.5">50%</option>
+    </select>
+    <button class="btn" id="renumberBtn" title="위치(위→아래, 좌→우) 기준으로 번호 다시 매기기">번호 정렬</button>
+    <button class="btn primary" id="exportBtn">내보내기</button>
+  </div>
+</header>
+
+<div class="main">
+  <section class="stage" id="stage">
+    <div class="frame-wrap" id="frameWrap" style="width:100%;height:100%">
+      <iframe id="frame" title="prototype"></iframe>
+      <div id="fallbackLayer"></div>
+    </div>
+    <div class="empty" id="emptyState">
+      <h2>프로토타입을 불러오세요</h2>
+      <p>같은 폴더의 HTML 파일명을 입력하거나 <b>파일</b> 버튼으로 로컬 HTML·이미지를 엽니다.<br>
+         불러온 뒤 <b>핀 찍기</b>를 켜고 화면을 클릭하면 그 자리에 번호가 찍히고, 클릭한 DOM 요소 정보까지 함께 기록됩니다.</p>
+      <div class="samples" id="samples"></div>
+    </div>
+    <div class="banner hide" id="banner"></div>
+  </section>
+
+  <aside class="side">
+    <div class="side-head">
+      <div class="filters" id="filters">
+        <button data-filter="all" class="on">전체</button>
+        <button data-filter="spec">디스크립션</button>
+        <button data-filter="review">리뷰</button>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn ghost" id="importBtn" title="JSON 불러오기">가져오기</button>
+      <button class="btn ghost danger" id="clearBtn" title="현재 프로토타입의 핀 전체 삭제">비우기</button>
+      <input type="file" id="jsonInput" accept="application/json,.json" hidden>
+    </div>
+    <div class="list" id="list"></div>
+    <div class="detail empty-state" id="detail">핀을 선택하면 여기에서 내용을 작성합니다.</div>
+  </aside>
+</div>
+
+<dialog id="exportDlg">
+  <div class="dlg-head">
+    <strong>내보내기</strong>
+    <span class="pill" id="exportCount"></span>
+    <button class="btn ghost" id="closeDlg">닫기</button>
+  </div>
+  <div class="dlg-tabs" id="exportTabs">
+    <button data-fmt="spec" class="on">디스크립션 MD</button>
+    <button data-fmt="review">리뷰 코멘트 MD</button>
+    <button data-fmt="prompt">Claude 프롬프트</button>
+    <button data-fmt="json">JSON</button>
+  </div>
+  <div class="dlg-body"><textarea id="exportText" spellcheck="false" readonly></textarea></div>
+  <div class="dlg-foot">
+    <span class="hint" id="exportHint"></span>
+    <button class="btn" id="dlHtmlBtn" title="핀이 박힌 프로토타입 사본을 HTML로 저장">주석본 HTML</button>
+    <button class="btn" id="dlBtn">파일 저장</button>
+    <button class="btn primary" id="copyBtn">복사</button>
+  </div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================================
+   상태
+   ========================================================================= */
+var STORE_PREFIX = 'pna:v1:';
+var state = {
+  srcLabel : '',      // 저장 키 & 문서 제목으로 쓰는 프로토타입 이름
+  srcUrl   : '',      // iframe에 실제로 물린 주소
+  isBlob   : false,   // 로컬 파일(blob)로 띄웠는지
+  pins     : [],
+  mode     : 'browse',
+  pinType  : 'spec',
+  filter   : 'all',
+  selected : null,
+  page     : '',      // iframe 안에서 지금 보고 있는 페이지 키
+  inject   : false,   // iframe DOM 접근 가능 여부
+  device   : 'full',
+  zoom     : 1
+};
+
+var $  = function(s){ return document.querySelector(s); };
+var $$ = function(s){ return Array.prototype.slice.call(document.querySelectorAll(s)); };
+var frame = $('#frame');
+
+/* =========================================================================
+   유틸
+   ========================================================================= */
+function uid(){ return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function txt(el){
+  if(!el) return '';
+  var t = (el.innerText || el.textContent || '').replace(/\s+/g,' ').trim();
+  return t.length > 70 ? t.slice(0,70) + '…' : t;
+}
+function cut(s, n){
+  s = String(s == null ? '' : s).replace(/\s+/g,' ').trim();
+  return s.length > n ? s.slice(0, n) + '…' : s;
+}
+function ownText(el){
+  var s = '';
+  for(var i = 0; i < el.childNodes.length; i++){
+    var n = el.childNodes[i];
+    if(n.nodeType === 3) s += n.nodeValue;
+  }
+  return s.replace(/\s+/g,' ').trim();
+}
+/* 컨테이너를 클릭했을 때 하위 텍스트를 통째로 물지 않도록, 대표 라벨만 뽑는다 */
+function labelText(el){
+  var own = ownText(el);
+  if(own) return cut(own, 40);
+  var h = el.querySelector('h1,h2,h3,h4,h5,legend,caption,[class*="title"],strong,b,label,button,a');
+  if(h){
+    var t = ownText(h) || txt(h);
+    if(t) return cut(t, 40);
+  }
+  return cut(txt(el), 40);
+}
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){
+  return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c];
+}); }
+function mdCell(s){ return String(s == null ? '' : s).replace(/\|/g,'\\|').replace(/\n+/g,'<br>').trim(); }
+var toastTimer;
+function toast(msg){
+  var el = $('#toast'); el.textContent = msg; el.classList.add('on');
+  clearTimeout(toastTimer); toastTimer = setTimeout(function(){ el.classList.remove('on'); }, 1800);
+}
+function banner(msg){
+  var b = $('#banner');
+  if(!msg){ b.classList.add('hide'); return; }
+  b.innerHTML = msg; b.classList.remove('hide');
+}
+function download(name, text, mime){
+  var blob = new Blob([text], {type: mime || 'text/plain;charset=utf-8'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+}
+
+/* =========================================================================
+   저장 / 복원
+   ========================================================================= */
+var saveTimer;
+function storeKey(){ return STORE_PREFIX + (state.srcLabel || 'untitled'); }
+function save(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(function(){
+    try{
+      localStorage.setItem(storeKey(), JSON.stringify({
+        srcLabel: state.srcLabel, srcUrl: state.isBlob ? '' : state.srcUrl,
+        savedAt: new Date().toISOString(), pins: state.pins
+      }));
+      $('#saveState').textContent = '저장됨 · ' + state.pins.length + '개';
+    }catch(e){
+      $('#saveState').textContent = '저장 실패';
+    }
+  }, 250);
+}
+function load(label){
+  try{
+    var raw = localStorage.getItem(STORE_PREFIX + label);
+    if(!raw) return [];
+    var data = JSON.parse(raw);
+    return Array.isArray(data.pins) ? data.pins : [];
+  }catch(e){ return []; }
+}
+function listProjects(){
+  var out = [];
+  for(var i = 0; i < localStorage.length; i++){
+    var k = localStorage.key(i);
+    if(k && k.indexOf(STORE_PREFIX) === 0){
+      try{
+        var d = JSON.parse(localStorage.getItem(k));
+        out.push({ label: k.slice(STORE_PREFIX.length), count: (d.pins||[]).length, at: d.savedAt || '' });
+      }catch(e){}
+    }
+  }
+  return out.sort(function(a,b){ return (b.at||'').localeCompare(a.at||''); });
+}
+
+/* =========================================================================
+   iframe 로드 & 주입
+   ========================================================================= */
+var PIN_CSS = [
+'#__pna_layer{position:absolute;left:0;top:0;width:0;height:0;z-index:2147483000;pointer-events:none;}',
+'#__pna_layer *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;}',
+'#__pna_layer .pna-pin{position:absolute!important;transform:translate(-50%,-50%);pointer-events:auto;',
+'  min-width:24px;height:24px;padding:0;border-radius:50%;border:2px solid #fff;color:#fff;',
+'  font-size:11px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;',
+'  background:#2563eb;box-shadow:0 1px 5px rgba(0,0,0,.4);cursor:grab;user-select:none;}',
+'#__pna_layer .pna-pin.pna-review{background:#e8590c;border-radius:6px;padding:0 6px;}',
+'#__pna_layer .pna-pin.pna-on{outline:3px solid rgba(37,99,235,.4);z-index:2;}',
+'#__pna_layer .pna-pin.pna-review.pna-on{outline-color:rgba(232,89,12,.4);}',
+'#__pna_layer .pna-hi{position:absolute;pointer-events:none;border:2px solid #2563eb;',
+'  background:rgba(37,99,235,.08);border-radius:3px;}',
+'#__pna_layer .pna-hi-label{position:absolute;pointer-events:none;background:#2563eb;color:#fff;',
+'  font-size:10px;padding:2px 6px;border-radius:4px;white-space:nowrap;max-width:320px;overflow:hidden;',
+'  text-overflow:ellipsis;transform:translateY(-100%);}'
+].join('\n');
+
+function ctxDoc(){
+  if(!state.inject) return null;
+  try{ return frame.contentDocument; }catch(e){ return null; }
+}
+function pageKeyOf(win){
+  try{
+    if(state.isBlob) return 'main';
+    return (win.location.pathname || '') + (win.location.search || '');
+  }catch(e){ return 'main'; }
+}
+
+function loadSrc(url, label, isBlob){
+  state.srcUrl = url;
+  state.srcLabel = label;
+  state.isBlob = !!isBlob;
+  state.pins = load(label);
+  state.selected = null;
+  $('#emptyState').classList.add('hide');
+  $('#urlInput').value = isBlob ? label : url;
+  frame.src = url;
+  applyDevice();
+  save();
+  renderList();
+  renderDetail();
+}
+
+frame.addEventListener('load', function(){
+  var doc = null, win = null;
+  try{
+    win = frame.contentWindow;
+    doc = frame.contentDocument;
+    if(doc) void doc.body; // 크로스 오리진이면 여기서 예외
+    state.inject = !!doc;
+  }catch(e){
+    state.inject = false;
+  }
+  if(state.inject && doc){
+    state.page = pageKeyOf(win);
+    injectStyle(doc);
+    bindFrameEvents(doc, win);
+    banner('');
+    $('#fallbackLayer').classList.remove('on');
+  }else{
+    state.page = 'main';
+    $('#fallbackLayer').classList.add('on');
+    banner('다른 도메인의 문서라 DOM 정보를 읽을 수 없습니다. <b>좌표 기반 핀</b>만 기록됩니다 — 프로토타입과 같은 서버에 이 파일을 올려두면 요소 정보까지 자동 수집됩니다.');
+  }
+  renderPins();
+  renderList();
+});
+
+function injectStyle(doc){
+  if(doc.getElementById('__pna_style')) return;
+  var st = doc.createElement('style');
+  st.id = '__pna_style'; st.textContent = PIN_CSS;
+  (doc.head || doc.documentElement).appendChild(st);
+}
+function getLayer(){
+  var doc = ctxDoc();
+  if(!doc) return null;
+  var l = doc.getElementById('__pna_layer');
+  if(!l){
+    l = doc.createElement('div'); l.id = '__pna_layer';
+    doc.documentElement.appendChild(l);
+  }
+  return l;
+}
+
+/* =========================================================================
+   DOM 요소 해석 (선택자 / 영역 / 요소 유형)
+   ========================================================================= */
+function cssPath(el){
+  if(!el || el.nodeType !== 1) return '';
+  var parts = [], cur = el, depth = 0;
+  while(cur && cur.nodeType === 1 && depth < 8){
+    if(cur.id && /^[A-Za-z][\w:.-]*$/.test(cur.id)){ parts.unshift('#' + cur.id); break; }
+    var sel = cur.tagName.toLowerCase();
+    var cls = (cur.getAttribute('class') || '').trim().split(/\s+/).filter(function(c){
+      return c && c.indexOf('pna-') !== 0 && c.length < 28 && !/^(is-|has-)?active$/.test(c);
+    }).slice(0,2);
+    if(cls.length) sel += '.' + cls.join('.');
+    var p = cur.parentElement;
+    if(p){
+      var sibs = Array.prototype.filter.call(p.children, function(s){ return s.tagName === cur.tagName; });
+      if(sibs.length > 1) sel += ':nth-of-type(' + (sibs.indexOf(cur) + 1) + ')';
+    }
+    parts.unshift(sel);
+    cur = p; depth++;
+    if(!cur || cur.tagName === 'BODY' || cur.tagName === 'HTML') break;
+  }
+  return parts.join(' > ');
+}
+
+var AREA_SEL = 'section,header,nav,aside,main,footer,form,table,dialog,[role="dialog"],' +
+  '[class*="modal"],[class*="panel"],[class*="card"],[class*="section"],[class*="content"],[class*="page"]';
+var HEAD_SEL = 'h1,h2,h3,h4,legend,caption,[class*="title"],[class*="heading"],[class*="head"]';
+
+function guessArea(el){
+  var cur = el.parentElement, fallback = '', hops = 0;
+  while(cur && cur.tagName !== 'BODY' && cur.tagName !== 'HTML' && hops < 12){
+    if(cur.matches && cur.matches(AREA_SEL)){
+      var h = cur.querySelector(HEAD_SEL);
+      var t = h ? (ownText(h) || txt(h)).split('\n')[0].trim() : '';
+      if(t && t.length <= 30) return t;
+      if(!fallback){
+        fallback = cut(cur.getAttribute('aria-label') || cur.getAttribute('data-area') || cur.id ||
+                   (cur.getAttribute('class') || '').split(/\s+/)[0] || '', 30);
+      }
+    }
+    // 같은 레벨에서 바로 앞에 오는 제목도 영역 힌트가 된다
+    var prev = cur.previousElementSibling, guard = 0;
+    while(prev && guard++ < 4){
+      if(prev.matches && prev.matches('h1,h2,h3,h4')){
+        var pt = ownText(prev) || txt(prev);
+        if(pt && pt.length <= 30) return pt;
+      }
+      prev = prev.previousElementSibling;
+    }
+    cur = cur.parentElement; hops++;
+  }
+  return fallback || '기타';
+}
+
+function guessKind(el){
+  var tag = el.tagName.toLowerCase();
+  var role = (el.getAttribute('role') || '').toLowerCase();
+  if(tag === 'button' || role === 'button' || (tag === 'input' && /^(button|submit|reset)$/i.test(el.type))) return '버튼';
+  if(tag === 'a') return '링크';
+  if(tag === 'select') return '드롭다운';
+  if(tag === 'textarea') return '입력(멀티라인)';
+  if(tag === 'input'){
+    if(/^(checkbox)$/i.test(el.type)) return '체크박스';
+    if(/^(radio)$/i.test(el.type)) return '라디오';
+    if(/^(file)$/i.test(el.type)) return '파일 업로드';
+    return '입력 필드';
+  }
+  if(tag === 'img' || tag === 'svg' || tag === 'canvas') return '이미지/그래픽';
+  if(tag === 'th') return '표 헤더';
+  if(tag === 'td') return '표 셀';
+  if(tag === 'table') return '표';
+  if(tag === 'li') return '리스트 항목';
+  if(tag === 'label') return '라벨';
+  if(/^h[1-6]$/.test(tag)) return '제목';
+  if(tag === 'form') return '폼';
+  if(el.matches && el.matches('[class*="tab"]')) return '탭';
+  if(el.matches && el.matches('[class*="badge"],[class*="chip"],[class*="tag"]')) return '뱃지';
+  if(el.matches && el.matches('[class*="card"]')) return '카드';
+  if(/^(p|span|strong|em|small|dd|dt)$/.test(tag)) return '텍스트';
+  return '영역';
+}
+
+function describeEl(el){
+  var t = labelText(el);
+  var kind = guessKind(el);
+  return {
+    selector : cssPath(el),
+    tag      : el.tagName.toLowerCase(),
+    cls      : (el.getAttribute('class') || '').trim().slice(0,120),
+    elText   : t,
+    area     : guessArea(el),
+    kind     : kind,
+    label    : t ? (kind + ' 「' + t + '」') : kind
+  };
+}
+
+/* =========================================================================
+   iframe 이벤트 (핀 찍기 / 드래그 / 하이라이트)
+   ========================================================================= */
+var bound = null;
+function bindFrameEvents(doc, win){
+  if(bound && bound.doc === doc) return;
+  bound = { doc: doc, win: win };
+
+  function inLayer(node){ return !!(node && node.closest && node.closest('#__pna_layer')); }
+
+  doc.addEventListener('click', function(e){
+    if(inLayer(e.target)) return;
+    if(state.mode !== 'pin') return;
+    e.preventDefault(); e.stopPropagation();
+    addPin({ x: e.pageX, y: e.pageY, el: e.target });
+  }, true);
+
+  // 핀 모드에서는 프로토타입 자체 인터랙션이 먼저 발동하지 않도록 막는다
+  ['mousedown','mouseup','submit','keydown'].forEach(function(type){
+    doc.addEventListener(type, function(e){
+      if(state.mode !== 'pin' || inLayer(e.target)) return;
+      if(type === 'keydown' && !/^(Enter| )$/.test(e.key)) return;
+      e.preventDefault(); e.stopPropagation();
+    }, true);
+  });
+
+  doc.addEventListener('mousemove', function(e){
+    if(state.mode !== 'pin' || dragging) { if(!dragging) clearHi(); return; }
+    if(inLayer(e.target)) { clearHi(); return; }
+    showHi(e.target);
+  }, true);
+
+  doc.addEventListener('mouseleave', clearHi, true);
+
+  // 레이어 안(핀) 상호작용
+  var layer = getLayer();
+  if(layer){
+    layer.addEventListener('mousedown', function(e){
+      var pin = e.target.closest('.pna-pin');
+      if(!pin) return;
+      e.preventDefault(); e.stopPropagation();
+      select(pin.dataset.id);
+      startDrag(pin.dataset.id, e, doc, false);
+    }, true);
+  }
+
+  // 내부 스크롤 컨테이너(overflow:auto)까지 잡으려면 캡처 단계로 받아야 한다
+  var raf = null;
+  function reflow(){
+    if(raf) return;
+    raf = win.requestAnimationFrame(function(){ raf = null; renderPins(); });
+  }
+  doc.addEventListener('scroll', reflow, true);
+  win.addEventListener('scroll', reflow);
+  win.addEventListener('resize', reflow);
+  win.addEventListener('hashchange', function(){ renderPins(); });
+}
+
+function showHi(el){
+  var layer = getLayer(); if(!layer || !el || el.nodeType !== 1) return;
+  var doc = ctxDoc(), win = frame.contentWindow;
+  var r = el.getBoundingClientRect();
+  if(!r.width && !r.height) return clearHi();
+  var hi = layer.querySelector('.pna-hi');
+  var lb = layer.querySelector('.pna-hi-label');
+  if(!hi){
+    hi = doc.createElement('div'); hi.className = 'pna-hi'; layer.appendChild(hi);
+    lb = doc.createElement('div'); lb.className = 'pna-hi-label'; layer.appendChild(lb);
+  }
+  var x = r.left + win.scrollX, y = r.top + win.scrollY;
+  hi.style.cssText = 'position:absolute;left:' + x + 'px;top:' + y + 'px;width:' + r.width + 'px;height:' + r.height + 'px;';
+  hi.className = 'pna-hi';
+  var d = describeEl(el);
+  lb.textContent = d.label;
+  lb.style.cssText = 'position:absolute;left:' + x + 'px;top:' + (y - 3) + 'px;';
+  lb.className = 'pna-hi-label';
+}
+function clearHi(){
+  var layer = getLayer(); if(!layer) return;
+  var hi = layer.querySelector('.pna-hi'), lb = layer.querySelector('.pna-hi-label');
+  if(hi) hi.remove(); if(lb) lb.remove();
+}
+
+/* ---- 드래그로 핀 위치 조정 ---- */
+var dragging = null;
+function startDrag(id, e0, doc, isFallback){
+  var pin = getPin(id); if(!pin) return;
+  dragging = { id: id, moved: false };
+  var startX = isFallback ? e0.clientX : e0.pageX;
+  var startY = isFallback ? e0.clientY : e0.pageY;
+  var cur = isFallback ? { x: pin.x, y: pin.y } : pinPos(pin);
+  var origX = cur.x, origY = cur.y;
+  pin.freePos = true;   // 드래그 중에는 앵커를 잠시 풀어 마우스를 그대로 따라가게 한다
+  var host = isFallback ? document : doc;
+
+  function move(e){
+    var cx = isFallback ? e.clientX : e.pageX;
+    var cy = isFallback ? e.clientY : e.pageY;
+    var dx = (cx - startX) / (isFallback ? state.zoom : 1);
+    var dy = (cy - startY) / (isFallback ? state.zoom : 1);
+    if(Math.abs(dx) + Math.abs(dy) > 2) dragging.moved = true;
+    pin.x = Math.round(origX + dx);
+    pin.y = Math.round(origY + dy);
+    renderPins();
+  }
+  function up(){
+    host.removeEventListener('mousemove', move, true);
+    host.removeEventListener('mouseup', up, true);
+    pin.freePos = false;
+    if(dragging && dragging.moved){
+      // 위치를 옮겼으면 그 자리의 요소를 다시 앵커로 잡는다
+      if(!isFallback) reanchor(pin);
+    }
+    save(); renderPins(); renderList(); renderDetail();
+    dragging = null;
+  }
+  host.addEventListener('mousemove', move, true);
+  host.addEventListener('mouseup', up, true);
+}
+function reanchor(pin){
+  var doc = ctxDoc(), win = frame.contentWindow;
+  if(!doc) return;
+  var layer = getLayer();
+  if(layer) layer.style.display = 'none';
+  var el = doc.elementFromPoint(pin.x - win.scrollX, pin.y - win.scrollY);
+  if(layer) layer.style.display = '';
+  if(!el || el.closest('#__pna_layer')) return;
+  var d = describeEl(el);
+  pin.selector = d.selector; pin.tag = d.tag; pin.cls = d.cls;
+  pin.elText = d.elText; pin.kind = d.kind;
+  if(!pin.areaEdited) pin.area = d.area;
+  var r = el.getBoundingClientRect();
+  if(r.width > 0 && r.height > 0){
+    pin.rx = Math.min(1, Math.max(0, (pin.x - win.scrollX - r.left) / r.width));
+    pin.ry = Math.min(1, Math.max(0, (pin.y - win.scrollY - r.top) / r.height));
+  }else{
+    pin.rx = pin.ry = null;
+  }
+}
+
+/* =========================================================================
+   핀 CRUD
+   ========================================================================= */
+function getPin(id){
+  for(var i = 0; i < state.pins.length; i++) if(state.pins[i].id === id) return state.pins[i];
+  return null;
+}
+function pagePins(){
+  return state.pins.filter(function(p){ return (p.page || 'main') === (state.page || 'main'); });
+}
+function nextNo(type){
+  var max = 0;
+  state.pins.forEach(function(p){ if(p.type === type && p.no > max) max = p.no; });
+  return max + 1;
+}
+function noLabel(p){ return (p.type === 'review' ? 'C' : '') + p.no; }
+
+function addPin(opts){
+  var d = opts.el ? describeEl(opts.el) : {
+    selector:'', tag:'', cls:'', elText:'', area:'', kind:'좌표', label:'좌표 지정'
+  };
+  // 요소 안에서의 상대 위치를 함께 저장해 두면, 내부 스크롤·리렌더에도 핀이 요소를 따라간다
+  var rx = null, ry = null;
+  if(opts.el && opts.el.getBoundingClientRect){
+    var r = opts.el.getBoundingClientRect();
+    if(r.width > 0 && r.height > 0){
+      var win = frame.contentWindow;
+      rx = Math.min(1, Math.max(0, (opts.x - win.scrollX - r.left) / r.width));
+      ry = Math.min(1, Math.max(0, (opts.y - win.scrollY - r.top) / r.height));
+    }
+  }
+  var pin = {
+    id: uid(),
+    type: state.pinType,
+    no: nextNo(state.pinType),
+    page: state.page || 'main',
+    hash: (function(){ try{ return frame.contentWindow.location.hash || ''; }catch(e){ return ''; } })(),
+    x: Math.round(opts.x), y: Math.round(opts.y),
+    selector: d.selector, tag: d.tag, cls: d.cls, elText: d.elText,
+    rx: rx, ry: ry,
+    area: d.area, kind: d.kind,
+    title: d.elText || '',
+    desc: '', action: '', rule: '',
+    comment: '', priority: 'P1', status: 'open', owner: '',
+    createdAt: new Date().toISOString()
+  };
+  state.pins.push(pin);
+  state.selected = pin.id;
+  save(); renderPins(); renderList(); renderDetail(true);
+}
+
+function removePin(id){
+  state.pins = state.pins.filter(function(p){ return p.id !== id; });
+  if(state.selected === id) state.selected = null;
+  save(); renderPins(); renderList(); renderDetail();
+}
+
+function renumber(){
+  var groups = { spec: [], review: [] };
+  state.pins.forEach(function(p){ groups[p.type === 'review' ? 'review' : 'spec'].push(p); });
+  Object.keys(groups).forEach(function(k){
+    var pos = {};
+    groups[k].forEach(function(p){
+      pos[p.id] = (state.inject && (p.page||'main') === (state.page||'main')) ? pinPos(p) : { x: p.x, y: p.y };
+    });
+    groups[k].sort(function(a,b){
+      var pa = (a.page||'main'), pb = (b.page||'main');
+      if(pa !== pb) return pa < pb ? -1 : 1;
+      var rowA = Math.round(pos[a.id].y / 28), rowB = Math.round(pos[b.id].y / 28);
+      if(rowA !== rowB) return rowA - rowB;
+      return pos[a.id].x - pos[b.id].x;
+    });
+    groups[k].forEach(function(p, i){ p.no = i + 1; });
+  });
+  save(); renderPins(); renderList(); renderDetail();
+  toast('위치 기준으로 번호를 다시 매겼습니다');
+}
+
+function select(id){
+  state.selected = id;
+  renderPins(); renderList(); renderDetail();
+}
+function scrollToPin(p){
+  if(!state.inject) return;
+  try{
+    var doc = ctxDoc(), win = frame.contentWindow;
+    var el = findEl(p, doc);
+    if(el && el.scrollIntoView){ el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' }); }
+    else { win.scrollTo({ top: Math.max(0, p.y - win.innerHeight / 2), left: 0, behavior: 'smooth' }); }
+    setTimeout(renderPins, 400);
+  }catch(e){}
+}
+
+/* =========================================================================
+   핀 위치 해석 (요소 앵커 우선, 실패 시 저장된 절대 좌표)
+   ========================================================================= */
+function findEl(p, doc){
+  if(!doc) return null;
+  var el = null;
+  if(p.selector){
+    try{ el = doc.querySelector(p.selector); }catch(e){ el = null; }
+  }
+  if(!el && p.elText && p.tag){
+    // 선택자가 어긋나면 같은 태그 + 같은 텍스트로 한 번 더 찾아본다
+    var cands = doc.getElementsByTagName(p.tag);
+    for(var i = 0; i < cands.length && i < 400; i++){
+      if(labelText(cands[i]) === p.elText){ el = cands[i]; break; }
+    }
+  }
+  return el;
+}
+function pinPos(p){
+  var doc = ctxDoc(), win = frame.contentWindow;
+  if(doc && p.rx != null && !p.freePos){
+    var el = findEl(p, doc);
+    if(el){
+      var r = el.getBoundingClientRect();
+      if(r.width > 0 || r.height > 0){
+        return { x: Math.round(r.left + win.scrollX + r.width * p.rx),
+                 y: Math.round(r.top + win.scrollY + r.height * p.ry),
+                 anchored: true };
+      }
+    }
+  }
+  return { x: p.x, y: p.y, anchored: false };
+}
+
+/* =========================================================================
+   핀 렌더링
+   ========================================================================= */
+function renderPins(){
+  if(state.inject) renderPinsInFrame(); else renderPinsFallback();
+}
+function renderPinsInFrame(){
+  var doc = ctxDoc(), layer = getLayer();
+  if(!doc || !layer) return;
+  var cur = pagePins();
+  var html = cur.map(function(p){
+    var pos = pinPos(p);
+    return '<button class="pna-pin' + (p.type === 'review' ? ' pna-review' : '') +
+      (p.id === state.selected ? ' pna-on' : '') + '" data-id="' + p.id + '" ' +
+      'style="left:' + pos.x + 'px;top:' + pos.y + 'px" title="' + esc(pinTip(p)) + '">' + esc(noLabel(p)) + '</button>';
+  }).join('');
+  var hi = layer.querySelector('.pna-hi'), lb = layer.querySelector('.pna-hi-label');
+  layer.innerHTML = html;
+  if(hi) layer.appendChild(hi);
+  if(lb) layer.appendChild(lb);
+}
+function renderPinsFallback(){
+  var host = $('#fallbackLayer');
+  host.innerHTML = pagePins().map(function(p){
+    return '<div class="fpin' + (p.type === 'review' ? ' review' : '') +
+      (p.id === state.selected ? ' on' : '') + '" data-id="' + p.id + '" ' +
+      'style="left:' + p.x + 'px;top:' + p.y + 'px" title="' + esc(pinTip(p)) + '">' + esc(noLabel(p)) + '</div>';
+  }).join('');
+}
+function pinTip(p){
+  var head = noLabel(p) + '. ' + (p.title || p.elText || p.kind || '');
+  var body = p.type === 'review' ? (p.comment || '') : (p.desc || '');
+  return body ? head + '\n' + body : head;
+}
+
+/* 크로스 오리진 폴백: 오버레이 위에서 직접 클릭/드래그 */
+$('#fallbackLayer').addEventListener('mousedown', function(e){
+  if(!$('#fallbackLayer').classList.contains('on')) return;
+  var fp = e.target.closest('.fpin');
+  if(fp){ e.preventDefault(); select(fp.dataset.id); startDrag(fp.dataset.id, e, document, true); return; }
+  if(state.mode !== 'pin') return;
+  e.preventDefault();
+  var r = $('#fallbackLayer').getBoundingClientRect();
+  addPin({ x: (e.clientX - r.left) / state.zoom, y: (e.clientY - r.top) / state.zoom, el: null });
+});
+
+/* =========================================================================
+   목록 / 상세 패널
+   ========================================================================= */
+function pageLabel(key){
+  if(!key || key === 'main') return state.srcLabel || '메인';
+  var seg = key.split('/').filter(Boolean).pop();
+  return decodeURIComponent(seg || key);
+}
+function visiblePins(){
+  return state.pins.filter(function(p){
+    return state.filter === 'all' || p.type === state.filter;
+  }).sort(function(a, b){
+    var pa = (a.page||'main'), pb = (b.page||'main');
+    if(pa !== pb) return pa === (state.page||'main') ? -1 : (pb === (state.page||'main') ? 1 : (pa < pb ? -1 : 1));
+    if(a.type !== b.type) return a.type === 'spec' ? -1 : 1;
+    return a.no - b.no;
+  });
+}
+function renderList(){
+  var list = $('#list');
+  var pins = visiblePins();
+  var html = '', lastPage = null;
+  pins.forEach(function(p){
+    var pg = p.page || 'main';
+    if(pg !== lastPage){
+      lastPage = pg;
+      var mine = pg === (state.page || 'main');
+      html += '<div class="pagegroup">' + esc(pageLabel(pg)) + (mine ? '' : ' (다른 화면)') + '</div>';
+    }
+    var main = p.type === 'review' ? (p.comment || '(코멘트 미작성)') : (p.title || p.elText || '(제목 미작성)');
+    var dim  = p.type === 'review' ? !p.comment : !(p.title || p.elText);
+    var tags = '';
+    if(p.type === 'review'){
+      tags += '<span class="tag ' + (p.priority === 'P0' ? 'p0' : p.priority === 'P1' ? 'p1' : '') + '">' + esc(p.priority) + '</span>';
+      if(p.status !== 'open') tags += '<span class="tag done">' + (p.status === 'done' ? '반영' : '보류') + '</span>';
+    }
+    html += '<div class="row' + (p.type === 'review' ? ' review' : '') + (p.id === state.selected ? ' on' : '') + '" data-id="' + p.id + '">' +
+      '<div class="no">' + esc(noLabel(p)) + '</div>' +
+      '<div class="body">' +
+        '<div class="t' + (dim ? ' dim' : '') + '">' + esc(main) + tags + '</div>' +
+        '<div class="m">' + esc((p.area || '') + (p.kind ? ' · ' + p.kind : '') + (p.elText ? ' · ' + p.elText : '')) + '</div>' +
+      '</div></div>';
+  });
+  list.innerHTML = html;
+}
+$('#list').addEventListener('click', function(e){
+  var row = e.target.closest('.row'); if(!row) return;
+  var p = getPin(row.dataset.id); if(!p) return;
+  select(p.id);
+  if((p.page || 'main') === (state.page || 'main')) scrollToPin(p);
+});
+
+function field(label, key, val, ph, multi){
+  var tag = multi ? 'textarea' : 'input';
+  return '<div class="field"><label>' + esc(label) + '</label>' +
+    '<' + tag + ' data-key="' + key + '" placeholder="' + esc(ph || '') + '"' +
+    (multi ? '>' + esc(val || '') + '</textarea>' : ' value="' + esc(val || '') + '">') +
+    '</div>';
+}
+function renderDetail(focus){
+  var box = $('#detail');
+  var p = state.selected ? getPin(state.selected) : null;
+  if(!p){
+    box.className = 'detail empty-state';
+    box.textContent = '핀을 선택하면 여기에서 내용을 작성합니다.';
+    return;
+  }
+  box.className = 'detail';
+  var head = '<h3 class="' + (p.type === 'review' ? 'review' : '') + '"><span class="no">' + esc(noLabel(p)) + '</span>' +
+    (p.type === 'review' ? '리뷰 코멘트' : '화면 디스크립션') + '</h3>';
+
+  var meta = '<div class="meta">' +
+    '<b>요소</b> ' + esc(p.kind || '-') + (p.elText ? ' 「' + esc(p.elText) + '」' : '') + '<br>' +
+    '<b>선택자</b> ' + esc(p.selector || '(좌표 기반)') + '<br>' +
+    '<b>위치</b> ' + (pinPos(p).anchored ? '요소 기준 고정' : 'x:' + p.x + ' y:' + p.y) +
+    (p.hash ? ' · ' + esc(p.hash) : '') +
+    '</div>';
+
+  var body;
+  if(p.type === 'review'){
+    body =
+      field('코멘트', 'comment', p.comment, '예: 저장 버튼이 스크롤에 가려집니다. 하단 고정으로 변경 필요', true) +
+      '<div class="field-2">' +
+        '<div class="field"><label>우선순위</label><select data-key="priority">' +
+          ['P0','P1','P2'].map(function(v){ return '<option' + (p.priority === v ? ' selected' : '') + '>' + v + '</option>'; }).join('') +
+        '</select></div>' +
+        '<div class="field"><label>상태</label><select data-key="status">' +
+          [['open','열림'],['done','반영'],['hold','보류']].map(function(v){
+            return '<option value="' + v[0] + '"' + (p.status === v[0] ? ' selected' : '') + '>' + v[1] + '</option>';
+          }).join('') +
+        '</select></div>' +
+        '<div class="field"><label>담당</label><input data-key="owner" value="' + esc(p.owner || '') + '" placeholder="예: 디자인"></div>' +
+      '</div>' +
+      field('영역', 'area', p.area, '자동 추정값');
+  }else{
+    body =
+      field('제목(요소명)', 'title', p.title, '예: 상품 등록 버튼') +
+      '<div class="field-2">' +
+        field('영역', 'area', p.area, '예: 상품 목록') +
+        field('요소 유형', 'kind', p.kind, '예: 버튼') +
+      '</div>' +
+      field('설명', 'desc', p.desc, '이 요소가 무엇이고 어떤 데이터를 보여주는지', true) +
+      field('동작 / 인터랙션', 'action', p.action, '클릭·입력 시 무엇이 일어나는지, 이동 화면', true) +
+      field('정책 · 예외', 'rule', p.rule, '노출 조건, 권한, 빈 값·에러 케이스', true);
+  }
+
+  var actions = '<div class="detail-actions">' +
+    '<button class="btn" data-act="goto">위치로 이동</button>' +
+    '<button class="btn" data-act="swap">' + (p.type === 'review' ? '디스크립션으로' : '리뷰로') + ' 전환</button>' +
+    '<div class="spacer" style="flex:1"></div>' +
+    '<button class="btn danger" data-act="del">삭제</button>' +
+    '</div>';
+
+  box.innerHTML = head + meta + body + actions;
+
+  box.querySelectorAll('[data-key]').forEach(function(inp){
+    inp.addEventListener('input', function(){
+      var pin = getPin(state.selected); if(!pin) return;
+      pin[inp.dataset.key] = inp.value;
+      if(inp.dataset.key === 'area') pin.areaEdited = true;
+      save(); renderList(); renderPins();
+    });
+    inp.addEventListener('change', function(){
+      var pin = getPin(state.selected); if(!pin) return;
+      pin[inp.dataset.key] = inp.value;
+      save(); renderList(); renderPins();
+    });
+  });
+  box.querySelectorAll('[data-act]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var pin = getPin(state.selected); if(!pin) return;
+      var act = btn.dataset.act;
+      if(act === 'del'){ removePin(pin.id); }
+      else if(act === 'goto'){ scrollToPin(pin); }
+      else if(act === 'swap'){
+        pin.type = pin.type === 'review' ? 'spec' : 'review';
+        pin.no = nextNo(pin.type);
+        save(); renderPins(); renderList(); renderDetail();
+      }
+    });
+  });
+  if(focus){
+    var first = box.querySelector('[data-key]');
+    if(first) first.focus();
+  }
+}
+
+/* =========================================================================
+   툴바 / 단축키
+   ========================================================================= */
+function setMode(m){
+  state.mode = m;
+  $$('#modeSeg button').forEach(function(b){ b.classList.toggle('on', b.dataset.mode === m); });
+  $('#stage').classList.toggle('pinning', m === 'pin');
+  if(m !== 'pin') clearHi();
+}
+function setType(t){
+  state.pinType = t;
+  $$('#typeSeg button').forEach(function(b){ b.classList.toggle('on', b.dataset.type === t); });
+}
+function applyDevice(){
+  var w = state.device, wrap = $('#frameWrap');
+  if(w === 'full'){ wrap.style.width = '100%'; wrap.style.height = '100%'; }
+  else { wrap.style.width = w + 'px'; wrap.style.height = 'calc(100vh - var(--topbar-h) - 28px)'; }
+  wrap.style.transform = 'scale(' + state.zoom + ')';
+}
+
+$('#modeSeg').addEventListener('click', function(e){
+  var b = e.target.closest('button'); if(b) setMode(b.dataset.mode);
+});
+$('#typeSeg').addEventListener('click', function(e){
+  var b = e.target.closest('button'); if(b) setType(b.dataset.type);
+});
+$('#filters').addEventListener('click', function(e){
+  var b = e.target.closest('button'); if(!b) return;
+  state.filter = b.dataset.filter;
+  $$('#filters button').forEach(function(x){ x.classList.toggle('on', x === b); });
+  renderList();
+});
+$('#device').addEventListener('change', function(){ state.device = this.value; applyDevice(); });
+$('#zoom').addEventListener('change', function(){ state.zoom = parseFloat(this.value); applyDevice(); });
+$('#renumberBtn').addEventListener('click', renumber);
+
+$('#loadBtn').addEventListener('click', function(){
+  var v = $('#urlInput').value.trim();
+  if(!v) return;
+  loadSrc(v, v.split('/').pop() || v, false);
+});
+$('#urlInput').addEventListener('keydown', function(e){ if(e.key === 'Enter') $('#loadBtn').click(); });
+
+$('#fileBtn').addEventListener('click', function(){ $('#fileInput').click(); });
+$('#fileInput').addEventListener('change', function(){
+  var f = this.files && this.files[0]; if(!f) return;
+  var reader = new FileReader();
+  if(/^image\//.test(f.type)){
+    reader.onload = function(){
+      var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + esc(f.name) +
+        '</title></head><body style="margin:0;background:#fff">' +
+        '<img src="' + reader.result + '" style="display:block;width:100%;height:auto" alt=""></body></html>';
+      var url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+      loadSrc(url, f.name, true);
+    };
+    reader.readAsDataURL(f);
+  }else{
+    reader.onload = function(){
+      var url = URL.createObjectURL(new Blob([reader.result], { type: 'text/html' }));
+      loadSrc(url, f.name, true);
+    };
+    reader.readAsText(f);
+  }
+  this.value = '';
+});
+
+$('#clearBtn').addEventListener('click', function(){
+  if(!state.pins.length) return;
+  if(!confirm('현재 프로토타입의 핀 ' + state.pins.length + '개를 모두 지웁니다. 계속할까요?')) return;
+  state.pins = []; state.selected = null;
+  save(); renderPins(); renderList(); renderDetail();
+});
+$('#importBtn').addEventListener('click', function(){ $('#jsonInput').click(); });
+$('#jsonInput').addEventListener('change', function(){
+  var f = this.files && this.files[0]; if(!f) return;
+  var reader = new FileReader();
+  reader.onload = function(){
+    try{
+      var data = JSON.parse(reader.result);
+      var pins = Array.isArray(data) ? data : data.pins;
+      if(!Array.isArray(pins)) throw new Error('pins 배열 없음');
+      state.pins = pins;
+      state.selected = null;
+      save(); renderPins(); renderList(); renderDetail();
+      toast(pins.length + '개 핀을 불러왔습니다');
+    }catch(err){ alert('JSON을 읽을 수 없습니다: ' + err.message); }
+  };
+  reader.readAsText(f);
+  this.value = '';
+});
+
+document.addEventListener('keydown', function(e){
+  var t = e.target;
+  if(t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+  if(e.key === 'Escape'){ setMode('browse'); }
+  else if(e.key === 'p' || e.key === 'P'){ setMode(state.mode === 'pin' ? 'browse' : 'pin'); }
+  else if((e.key === 'Delete' || e.key === 'Backspace') && state.selected){ e.preventDefault(); removePin(state.selected); }
+  else if(state.selected && /^Arrow/.test(e.key)){
+    var p = getPin(state.selected); if(!p) return;
+    e.preventDefault();
+    var step = e.shiftKey ? 10 : 1;
+    var pos = state.inject ? pinPos(p) : { x: p.x, y: p.y };
+    p.x = pos.x; p.y = pos.y;
+    if(e.key === 'ArrowUp') p.y -= step;
+    if(e.key === 'ArrowDown') p.y += step;
+    if(e.key === 'ArrowLeft') p.x -= step;
+    if(e.key === 'ArrowRight') p.x += step;
+    if(state.inject) reanchor(p);
+    save(); renderPins();
+  }
+});
+
+/* =========================================================================
+   내보내기
+   ========================================================================= */
+function groupBy(arr, keyFn){
+  var map = [], index = {};
+  arr.forEach(function(item){
+    var k = keyFn(item);
+    if(!(k in index)){ index[k] = map.length; map.push({ key: k, items: [] }); }
+    map[index[k]].items.push(item);
+  });
+  return map;
+}
+function sortedPins(type){
+  return state.pins.filter(function(p){ return p.type === type; }).sort(function(a, b){
+    var pa = (a.page||'main'), pb = (b.page||'main');
+    if(pa !== pb) return pa < pb ? -1 : 1;
+    return a.no - b.no;
+  });
+}
+
+function exportSpecMd(){
+  var pins = sortedPins('spec');
+  var title = state.srcLabel || 'prototype';
+  var out = ['# ' + title + ' — 화면 디스크립션', '',
+    '> 프로토타입: `' + (state.isBlob ? title : state.srcUrl) + '`  ',
+    '> 작성일: ' + new Date().toISOString().slice(0,10) + ' · 항목 ' + pins.length + '건', ''];
+  if(!pins.length){ out.push('_디스크립션 핀이 없습니다._'); return out.join('\n'); }
+
+  groupBy(pins, function(p){ return p.page || 'main'; }).forEach(function(pageGroup){
+    if(pins.some(function(p){ return (p.page||'main') !== (pins[0].page||'main'); })){
+      out.push('## ' + pageLabel(pageGroup.key), '');
+    }
+    groupBy(pageGroup.items, function(p){ return p.area || '기타'; }).forEach(function(areaGroup){
+      out.push('### ' + areaGroup.key, '');
+      out.push('| No | 요소 | 설명 | 동작 | 정책 · 예외 |');
+      out.push('|:--:|------|------|------|-------------|');
+      areaGroup.items.forEach(function(p){
+        var el = (p.kind || '') + (p.title || p.elText ? ' 「' + (p.title || p.elText) + '」' : '');
+        out.push('| ' + p.no + ' | ' + mdCell(el) + ' | ' + mdCell(p.desc) + ' | ' +
+                 mdCell(p.action) + ' | ' + mdCell(p.rule) + ' |');
+      });
+      out.push('');
+    });
+  });
+
+  out.push('<details><summary>위치 참조 (DOM 선택자)</summary>', '');
+  out.push('| No | 선택자 | 좌표 |');
+  out.push('|:--:|--------|------|');
+  pins.forEach(function(p){
+    out.push('| ' + p.no + ' | `' + (p.selector || '-') + '` | ' + p.x + ', ' + p.y + ' |');
+  });
+  out.push('', '</details>');
+  return out.join('\n');
+}
+
+function exportReviewMd(){
+  var pins = sortedPins('review');
+  var title = state.srcLabel || 'prototype';
+  var out = ['# ' + title + ' — 리뷰 코멘트', '',
+    '> 프로토타입: `' + (state.isBlob ? title : state.srcUrl) + '`  ',
+    '> 작성일: ' + new Date().toISOString().slice(0,10) + ' · 코멘트 ' + pins.length + '건', ''];
+  if(!pins.length){ out.push('_리뷰 핀이 없습니다._'); return out.join('\n'); }
+
+  ['P0','P1','P2'].forEach(function(pr){
+    var group = pins.filter(function(p){ return (p.priority || 'P1') === pr; });
+    if(!group.length) return;
+    out.push('## ' + pr + ' (' + group.length + '건)', '');
+    group.forEach(function(p){
+      var done = p.status === 'done';
+      out.push('- [' + (done ? 'x' : ' ') + '] **C' + p.no + '** · ' + (p.area || '기타') +
+        ' · ' + (p.kind || '') + (p.elText ? ' 「' + p.elText + '」' : '') +
+        (p.owner ? ' · @' + p.owner : '') + (p.status === 'hold' ? ' · _보류_' : ''));
+      var c = (p.comment || '(코멘트 미작성)').split('\n');
+      c.forEach(function(line){ out.push('      ' + line); });
+      out.push('      `' + (p.selector || 'x:' + p.x + ' y:' + p.y) + '`');
+    });
+    out.push('');
+  });
+  return out.join('\n');
+}
+
+function exportJson(){
+  return JSON.stringify({
+    tool: 'prototype-numbering-agent',
+    version: 1,
+    prototype: { label: state.srcLabel, url: state.isBlob ? '' : state.srcUrl },
+    exportedAt: new Date().toISOString(),
+    pins: state.pins
+  }, null, 2);
+}
+
+function exportPrompt(){
+  var spec = sortedPins('spec'), review = sortedPins('review');
+  var lines = [];
+  lines.push('프로토타입 `' + (state.srcLabel || 'prototype') + '` 위에 내가 직접 찍은 넘버링 핀 데이터야.');
+  lines.push('각 핀에는 클릭한 지점의 DOM 요소 정보(선택자·태그·텍스트)와 내가 남긴 메모가 함께 들어있어.');
+  lines.push('');
+  if(spec.length){
+    lines.push('## 1) 화면 디스크립션으로 정리해줘');
+    lines.push('- 아래 핀을 번호 순서대로, `영역`별로 묶어서 `| No | 요소 | 설명 | 동작 | 정책 · 예외 |` 표로 작성');
+    lines.push('- 내 메모는 그대로 살리고, 비어 있는 칸은 프로토타입 코드를 직접 열어 확인한 근거로만 채울 것 (추측 금지, 모르면 `TBD`)');
+    lines.push('- 문체는 기존 `pjt/*.md` PRD와 동일하게 (개조식, 명사형 종결)');
+    lines.push('');
+    lines.push('### 디스크립션 핀 (' + spec.length + '개)');
+    spec.forEach(function(p){
+      lines.push('[' + p.no + '] 영역: ' + (p.area || '-') + ' / 요소: ' + (p.kind || '-') +
+        (p.elText ? ' 「' + p.elText + '」' : ''));
+      lines.push('    선택자: ' + (p.selector || '(좌표 기반) x:' + p.x + ' y:' + p.y));
+      if(p.title)  lines.push('    제목: ' + p.title);
+      if(p.desc)   lines.push('    설명: ' + p.desc.replace(/\n/g, ' '));
+      if(p.action) lines.push('    동작: ' + p.action.replace(/\n/g, ' '));
+      if(p.rule)   lines.push('    정책/예외: ' + p.rule.replace(/\n/g, ' '));
+    });
+    lines.push('');
+  }
+  if(review.length){
+    lines.push('## ' + (spec.length ? '2' : '1') + ') 리뷰 코멘트를 반영해줘');
+    lines.push('- 각 코멘트를 프로토타입 HTML의 해당 선택자 위치에서 실제로 수정');
+    lines.push('- P0 → P1 → P2 순서로 처리하고, 수정이 불가능하거나 판단이 필요한 항목은 이유를 적어 되물을 것');
+    lines.push('');
+    lines.push('### 리뷰 핀 (' + review.length + '개)');
+    review.forEach(function(p){
+      lines.push('[C' + p.no + '] ' + (p.priority || 'P1') + ' / 영역: ' + (p.area || '-') +
+        ' / 요소: ' + (p.kind || '-') + (p.elText ? ' 「' + p.elText + '」' : ''));
+      lines.push('    선택자: ' + (p.selector || '(좌표 기반) x:' + p.x + ' y:' + p.y));
+      lines.push('    요청: ' + (p.comment || '(미작성)').replace(/\n/g, ' '));
+    });
+    lines.push('');
+  }
+  if(!spec.length && !review.length) lines.push('_(핀이 없습니다)_');
+  lines.push('---');
+  lines.push('핀 좌표는 프로토타입 문서 기준 절대 좌표(px)이고, 선택자는 클릭 시점의 DOM 경로야.');
+  lines.push('선택자가 어긋나면 요소 텍스트로 먼저 찾아본 뒤 작업해줘.');
+  return lines.join('\n');
+}
+
+/* 핀이 박힌 프로토타입 사본 (공유용) */
+function exportAnnotatedHtml(){
+  var doc = ctxDoc();
+  if(!doc){ alert('DOM에 접근할 수 없어 주석본을 만들 수 없습니다. (크로스 오리진)'); return; }
+  var clone = doc.documentElement.cloneNode(true);
+  var layer = clone.querySelector('#__pna_layer');
+  if(layer){
+    var hi = layer.querySelector('.pna-hi'), lb = layer.querySelector('.pna-hi-label');
+    if(hi) hi.remove(); if(lb) lb.remove();
+    Array.prototype.forEach.call(layer.querySelectorAll('.pna-pin'), function(el){
+      el.classList.remove('pna-on');
+      el.style.cursor = 'default';
+    });
+  }
+  if(!state.isBlob && state.srcUrl){
+    var head = clone.querySelector('head');
+    if(head && !head.querySelector('base')){
+      var base = doc.createElement('base');
+      base.href = new URL(state.srcUrl, location.href).href;
+      head.insertBefore(base, head.firstChild);
+    }
+  }
+  var pins = pagePins().sort(function(a, b){
+    if(a.type !== b.type) return a.type === 'spec' ? -1 : 1;
+    return a.no - b.no;
+  });
+  var rows = pins.map(function(p){
+    var main = p.type === 'review' ? (p.comment || '') : [p.desc, p.action, p.rule].filter(Boolean).join(' / ');
+    return '<tr><td style="text-align:center;font-weight:700;color:' + (p.type === 'review' ? '#e8590c' : '#2563eb') + '">' +
+      esc(noLabel(p)) + '</td><td>' + esc(p.area || '') + '</td><td>' +
+      esc((p.kind || '') + (p.title || p.elText ? ' 「' + (p.title || p.elText) + '」' : '')) + '</td><td>' +
+      esc(main) + '</td></tr>';
+  }).join('');
+  var summary =
+    '<section style="all:initial;display:block;font:13px/1.7 -apple-system,BlinkMacSystemFont,\'Malgun Gothic\',sans-serif;' +
+    'padding:24px;background:#f7f8fa;border-top:3px solid #2563eb;color:#161a1d">' +
+    '<h2 style="margin:0 0 12px;font-size:16px">넘버링 요약 — ' + esc(state.srcLabel) + ' (' + pins.length + '건)</h2>' +
+    '<table style="border-collapse:collapse;width:100%;background:#fff">' +
+    '<thead><tr style="background:#eef1f5">' +
+    ['No','영역','요소','내용'].map(function(h){
+      return '<th style="border:1px solid #dfe3e8;padding:6px 8px;text-align:left;font-size:12px">' + h + '</th>';
+    }).join('') + '</tr></thead><tbody>' +
+    rows.replace(/<td/g, '<td style="border:1px solid #dfe3e8;padding:6px 8px;vertical-align:top"') +
+    '</tbody></table></section>';
+
+  var bodyEl = clone.querySelector('body');
+  if(bodyEl) bodyEl.insertAdjacentHTML('beforeend', summary);
+  var html = '<!DOCTYPE html>\n' + clone.outerHTML;
+  download((state.srcLabel || 'prototype').replace(/\.html?$/i, '') + '.annotated.html', html, 'text/html;charset=utf-8');
+  toast('주석본 HTML을 저장했습니다');
+}
+
+var EXPORTS = {
+  spec:   { fn: exportSpecMd,   file: '-description.md',   hint: 'PRD 문서(pjt/*.md)에 그대로 붙여넣을 수 있는 표 형식입니다.' },
+  review: { fn: exportReviewMd, file: '-review.md',         hint: 'GitHub 이슈·노션에 붙여넣으면 체크박스 목록으로 보입니다.' },
+  prompt: { fn: exportPrompt,   file: '-prompt.txt',        hint: 'Claude Code 대화창에 그대로 붙여넣으세요. 저장소의 prototype-spec 스킬이 이 형식을 받습니다.' },
+  json:   { fn: exportJson,     file: '-pins.json',         hint: '핀 원본 데이터. 다시 [가져오기]로 불러오거나 에이전트 입력으로 씁니다.' }
+};
+var exportFmt = 'spec';
+function renderExport(){
+  var e = EXPORTS[exportFmt];
+  $('#exportText').value = e.fn();
+  $('#exportHint').textContent = e.hint;
+  $('#exportCount').textContent = '디스크립션 ' + sortedPins('spec').length + ' · 리뷰 ' + sortedPins('review').length;
+  $$('#exportTabs button').forEach(function(b){ b.classList.toggle('on', b.dataset.fmt === exportFmt); });
+}
+$('#exportBtn').addEventListener('click', function(){ renderExport(); $('#exportDlg').showModal(); });
+$('#closeDlg').addEventListener('click', function(){ $('#exportDlg').close(); });
+$('#exportTabs').addEventListener('click', function(e){
+  var b = e.target.closest('button'); if(!b) return;
+  exportFmt = b.dataset.fmt; renderExport();
+});
+$('#copyBtn').addEventListener('click', function(){
+  var ta = $('#exportText');
+  ta.removeAttribute('readonly'); ta.select();
+  try{ document.execCommand('copy'); toast('복사했습니다'); }catch(e){ toast('복사 실패 — 직접 선택해 주세요'); }
+  ta.setAttribute('readonly', '');
+  window.getSelection().removeAllRanges();
+});
+$('#dlBtn').addEventListener('click', function(){
+  var e = EXPORTS[exportFmt];
+  var base = (state.srcLabel || 'prototype').replace(/\.html?$/i, '');
+  download(base + e.file, e.fn(), exportFmt === 'json' ? 'application/json' : 'text/plain;charset=utf-8');
+});
+$('#dlHtmlBtn').addEventListener('click', exportAnnotatedHtml);
+
+/* =========================================================================
+   초기화
+   ========================================================================= */
+function renderSamples(){
+  var box = $('#samples');
+  var recents = listProjects().slice(0, 8);
+  var html = recents.map(function(r){
+    return '<button data-src="' + esc(r.label) + '">' + esc(r.label) + ' · ' + r.count + '핀</button>';
+  }).join('');
+  box.innerHTML = html;
+}
+$('#samples').addEventListener('click', function(e){
+  var b = e.target.closest('button'); if(!b) return;
+  $('#urlInput').value = b.dataset.src;
+  $('#loadBtn').click();
+});
+
+(function init(){
+  renderSamples();
+  var q = new URLSearchParams(location.search).get('src');
+  if(q){ loadSrc(q, q.split('/').pop() || q, false); }
+  else { $('#saveState').textContent = '대기'; }
+})();
+
+})();
+</script>
+</body>
+</html>
